@@ -1,5 +1,3 @@
-app/src/main/resources/**
-
 # Ignore Gradle project-specific cache directory
 .gradle
 
