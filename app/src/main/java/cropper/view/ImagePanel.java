@@ -14,6 +14,8 @@ import java.awt.image.BufferedImage;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 
+import cropper.CropperProps;
+
 @SuppressWarnings("serial")
 class ImagePanel extends JPanel {
 
@@ -31,6 +33,7 @@ class ImagePanel extends JPanel {
 
 	private int zoom;
 	private Observer<Integer> zoomLabel;
+	private CropperProps props;
 
 	private enum DragPoint {
 		TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT, ALL, NONE
@@ -38,9 +41,10 @@ class ImagePanel extends JPanel {
 
 	private DragPoint dragPoint = DragPoint.NONE;
 
-	public ImagePanel(final CropAction cropAction, final Observer<Integer> zoomLabel) {
+	public ImagePanel(final CropAction cropAction, final Observer<Integer> zoomLabel, final CropperProps props) {
 		this.image = null;
 		this.zoomLabel = zoomLabel;
+		this.props = props;
 
 		addMouseListener(new MouseAdapter() {
 			@Override
@@ -187,15 +191,22 @@ class ImagePanel extends JPanel {
 			int newWidth, newHeight;
 			double widthRatio = (double) panelWidth / imageWidth;
 			double heightRatio = (double) panelHeight / imageHeight;
+			if (props.isMaxZoom100()) {
+				double min = Math.min(widthRatio, heightRatio);
+				if (min > 1.0D) {
+					widthRatio /= min;
+					heightRatio /= min;
+				}
+			}
 
 			int r;
 			if (widthRatio < heightRatio) {
-				newWidth = panelWidth;
+				newWidth = (int) (imageWidth * widthRatio);
 				newHeight = (int) (imageHeight * widthRatio);
 				r = (int) Math.round(widthRatio * 100);
 			} else {
 				newWidth = (int) (imageWidth * heightRatio);
-				newHeight = panelHeight;
+				newHeight = (int) (imageHeight * heightRatio);
 				r = (int) Math.round(heightRatio * 100);
 			}
 			if (r != zoom) {
@@ -253,8 +264,9 @@ class ImagePanel extends JPanel {
 	}
 
 	public static Point getPointInsideBounds(Point point, Rectangle bounds) {
-		if (bounds.contains(point)) {
+		if (bounds == null || bounds.contains(point)) {
 			return point; // Point is already inside the bounds
+			// (or null, if render is not complete, so we don't know bounds yet)
 		}
 		int newX = Math.max(bounds.x, Math.min(bounds.x + bounds.width, point.x));
 		int newY = Math.max(bounds.y, Math.min(bounds.y + bounds.height, point.y));

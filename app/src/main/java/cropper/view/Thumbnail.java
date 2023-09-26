@@ -11,8 +11,11 @@ import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
+
+import util.Utils;
 
 public class Thumbnail extends JPanel {
 
@@ -30,6 +33,8 @@ public class Thumbnail extends JPanel {
 	private static final Border DEFAULT_BORDER = BorderFactory.createLineBorder(Color.LIGHT_GRAY, 3);
 
 	private int index;
+	private BufferedImage originalImage;
+	private BufferedImage scaledImage;
 
 	public Thumbnail(String filename, int index) {
 		this.index = index;
@@ -51,22 +56,24 @@ public class Thumbnail extends JPanel {
 	}
 
 	public void updateImage(BufferedImage newImage) {
-		lblImage.setPreferredSize(null);
-		lblImage.setIcon(new ImageIcon(newImage));
-		revalidate();
-		repaint();
+		originalImage = newImage;
+		scaledImage = Utils.scaleImage(originalImage, HEIGHT);
+		SwingUtilities.invokeLater(() -> {
+			lblImage.setPreferredSize(null);
+			lblImage.setIcon(new ImageIcon(scaledImage));
+			revalidate();
+			repaint();
+		});
 	}
 
 	public void select() {
 		setBorder(SELECTED_BORDER);
 		setBackground(SELECTED_BG_COLOR);
-
 	}
 
 	public void deselect() {
 		setBorder(DEFAULT_BORDER);
 		setBackground(DEFAULT_BG_COLOR);
-
 	}
 
 	public int getIndex() {

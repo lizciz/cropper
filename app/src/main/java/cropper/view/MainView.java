@@ -6,21 +6,19 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
-import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.InputEvent;
+import java.awt.event.ItemEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
-import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -31,6 +29,7 @@ import javax.swing.ActionMap;
 import javax.swing.Box;
 import javax.swing.InputMap;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -46,6 +45,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 
+import cropper.CropperProps;
 import cropper.model.DefaultModel;
 import cropper.model.ModelView;
 import javafx.application.Platform;
@@ -53,7 +53,6 @@ import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 import net.miginfocom.swing.MigLayout;
 import util.FormattedStringBuilder;
-import util.Tuple;
 
 @SuppressWarnings("serial")
 public class MainView extends JFrame implements ModelView {
@@ -64,6 +63,7 @@ public class MainView extends JFrame implements ModelView {
 	private JPanel thumbnailPanel;
 
 	private DefaultModel model;
+	private CropperProps props;
 
 	private final ExecutorService pool = Executors.newCachedThreadPool();
 	private JTextField txtCopyright;
@@ -79,10 +79,12 @@ public class MainView extends JFrame implements ModelView {
 	};
 	private JScrollPane thumbnailScroller;
 
-	public MainView(DefaultModel model) throws ClassNotFoundException, InstantiationException, IllegalAccessException,
+	public MainView(DefaultModel model, CropperProps props)
+			throws ClassNotFoundException, InstantiationException, IllegalAccessException,
 			UnsupportedLookAndFeelException {
 
 		this.model = model;
+		this.props = props;
 		model.setView(this);
 
 		Platform.startup(() -> {
@@ -92,7 +94,7 @@ public class MainView extends JFrame implements ModelView {
 
 		setTitle("Cropper");
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		setMinimumSize(new Dimension(800, 600));
+		setMinimumSize(new Dimension(700, 700));
 		setLocationRelativeTo(null);
 
 		createUIComponents();
@@ -102,76 +104,43 @@ public class MainView extends JFrame implements ModelView {
 	}
 
 	@Override
-	public void imagesWereLoaded(final List<Tuple<BufferedImage, String>> loaded, final List<File> failed) {
-		if (!failed.isEmpty()) {
-			SwingUtilities.invokeLater(() -> {
-				FormattedStringBuilder sb = new FormattedStringBuilder();
-				sb.a("<html>").f("<p>Failed to load %d files:</p>", failed.size()).a("<ul>");
-				for (File file : failed) {
-					sb.f("<li>%s</li>", file.getName());
+	public void imageWasLoaded(final BufferedImage image, final String filename, final int index) {
+		SwingUtilities.invokeLater(() -> {
+
+			Thumbnail thumbnail = new Thumbnail(filename, index);
+			thumbnail.addMouseListener(new MouseAdapter() {
+				@Override
+				public void mousePressed(MouseEvent e) {
+					model.selectImage(index);
 				}
-				sb.a("</ul></html>");
-				JOptionPane.showMessageDialog(MainView.this, sb.toString(), "Error when loading",
-						JOptionPane.WARNING_MESSAGE);
 			});
-		}
-		if (!loaded.isEmpty()) {
+			thumbnailPanel.add(thumbnail);
+			revalidate();
 
-			SwingUtilities.invokeLater(() -> {
+			pool.submit(() -> thumbnail.updateImage(image));
 
-				List<Thumbnail> thumbnails = new ArrayList<>();
-				for (int i = 0; i < loaded.size(); i++) {
-					Tuple<BufferedImage, String> tuple = loaded.get(i);
-					final String filename = tuple.v2();
-					thumbnails.add(addThumbnail(filename, i));
-				}
-				revalidate();
+		});
+	}
 
-				for (int i = 0; i < loaded.size(); i++) {
-
-					Thumbnail thumbnail = thumbnails.get(i);
-					Tuple<BufferedImage, String> tuple = loaded.get(i);
-					final BufferedImage originalImage = tuple.v1();
-
-					pool.submit(() -> {
-
-						// Define the dimensions for the thumb nail
-						int thumbnailHeight = 100;
-
-						// Calculate the scaling factors to fit within the thumb nail size
-						double scaleFactor = (double) thumbnailHeight / originalImage.getHeight();
-
-						// Create a new BufferedImage for the thumb nail
-						BufferedImage scaled = new BufferedImage((int) (originalImage.getWidth() * scaleFactor),
-								(int) (originalImage.getHeight() * scaleFactor), BufferedImage.TYPE_INT_ARGB);
-
-						// Apply the transformation
-						AffineTransform transform = AffineTransform.getScaleInstance(scaleFactor, scaleFactor);
-						Graphics2D g2d = scaled.createGraphics();
-						g2d.drawImage(originalImage, transform, null);
-						g2d.dispose();
-
-						SwingUtilities.invokeLater(() -> {
-							thumbnail.updateImage(scaled);
-							revalidate();
-						});
-
-					});
-				}
-
-			});
-		}
+	@Override
+	public void imagesFailedToLoad(final List<File> failed) {
+		SwingUtilities.invokeLater(() -> {
+			FormattedStringBuilder sb = new FormattedStringBuilder();
+			sb.a("<html>").f("<p>Failed to load %d files:</p>", failed.size()).a("<ul>");
+			for (File file : failed) {
+				sb.f("<li>%s</li>", file.getName());
+			}
+			sb.a("</ul></html>");
+			JOptionPane.showMessageDialog(MainView.this, sb.toString(), "Error when loading",
+					JOptionPane.WARNING_MESSAGE);
+		});
 
 	}
 
 	@Override
 	public void displayImage(final int index, final BufferedImage image) {
 		SwingUtilities.invokeLater(() -> {
-			int idx = Math.max(0, Math.min(index, thumbnailPanel.getComponentCount()));
-			if (selectedThumbnail != null && selectedThumbnail.getIndex() == index) {
-				return;
-			}
-			Thumbnail newThumbnail = (Thumbnail) thumbnailPanel.getComponent(idx);
+			Thumbnail newThumbnail = (Thumbnail) thumbnailPanel.getComponent(index);
 
 			if (selectedThumbnail != null) {
 				selectedThumbnail.deselect();
@@ -181,6 +150,14 @@ public class MainView extends JFrame implements ModelView {
 			currentImagePanel.setImage(image);
 
 			scrollToCurrentThumnail();
+		});
+	}
+
+	@Override
+	public void refreshThumbnail(final int index, final BufferedImage originalImage) {
+		SwingUtilities.invokeLater(() -> {
+			Thumbnail thumbnail = (Thumbnail) thumbnailPanel.getComponent(index);
+			pool.submit(() -> thumbnail.updateImage(originalImage));
 		});
 	}
 
@@ -220,57 +197,69 @@ public class MainView extends JFrame implements ModelView {
 		btnSelectImageDir.addActionListener(e -> Platform.runLater(() -> {
 			DirectoryChooser dirChooser = new DirectoryChooser();
 			dirChooser.setTitle("Open image directory");
-			dirChooser.setInitialDirectory(new File("./src/main/resources/"));
+			dirChooser.setInitialDirectory(new File(props.getLastPath()));
 
 			File selectedDir = dirChooser.showDialog(new Stage());
 
 			if (selectedDir != null && selectedDir.isDirectory()) {
+				props.setLastPath(selectedDir.getAbsolutePath());
 				model.openImageDirectory(selectedDir);
 			}
 		}));
 		toolbar.add(btnSelectImageDir, "cell 0 0");
 
-		JLabel lblSelectedDirectory = new JLabel("path to the selected image directory");
-		toolbar.add(lblSelectedDirectory, "cell 1 0");
-
 		Component rigidArea = Box.createRigidArea(new Dimension(20, 20));
-		toolbar.add(rigidArea, "cell 2 0 1 2");
+		toolbar.add(rigidArea, "cell 1 0 1 2");
 
 		JLabel lblPreferredSize = new JLabel("Preferred size (w/h):");
-		toolbar.add(lblPreferredSize, "cell 3 0 4 1,alignx left");
+		toolbar.add(lblPreferredSize, "cell 2 0 4 1,alignx left");
 
 		JLabel lblCopyright = new JLabel("Copyright text:");
-		toolbar.add(lblCopyright, "cell 8 0");
+		toolbar.add(lblCopyright, "cell 7 0");
 
-		txtPreferredWidth = new JTextField();
+		JButton btnSave = new JButton("Save all");
+		toolbar.add(btnSave, "cell 9 0,growx");
+
+		JCheckBox checkLimitZoom = new JCheckBox("Limit zoom to 100%", props.isMaxZoom100());
+		checkLimitZoom.addItemListener(e -> {
+			props.setMaxZoom100(e.getStateChange() == ItemEvent.SELECTED);
+			getContentPane().requestFocus();
+			currentImagePanel.repaint();
+		});
+		toolbar.add(checkLimitZoom, "cell 0 1");
+
+		txtPreferredWidth = new DebouncedTextField(props.getWidth(), 1000, txt -> props.setWidth(txt));
 		txtPreferredWidth.setPreferredSize(new Dimension(30, 20));
 		txtPreferredWidth.setMinimumSize(new Dimension(30, 20));
-		toolbar.add(txtPreferredWidth, "cell 3 1,alignx right");
+		toolbar.add(txtPreferredWidth, "cell 2 1,alignx right");
 		txtPreferredWidth.setColumns(4);
 
 		JLabel lblSizeSeparator = new JLabel("x");
-		toolbar.add(lblSizeSeparator, "cell 4 1,alignx center");
+		toolbar.add(lblSizeSeparator, "cell 3 1,alignx center");
 
-		txtPreferredHeight = new JTextField();
+		txtPreferredHeight = new DebouncedTextField(props.getHeight(), 1000, txt -> props.setHeight(txt));
 		txtPreferredHeight.setPreferredSize(new Dimension(30, 20));
 		txtPreferredHeight.setMinimumSize(new Dimension(30, 20));
-		toolbar.add(txtPreferredHeight, "cell 5 1,alignx left");
+		toolbar.add(txtPreferredHeight, "cell 4 1,alignx left");
 		txtPreferredHeight.setColumns(4);
 
 		JLabel lblSizeUnit = new JLabel("px");
-		toolbar.add(lblSizeUnit, "cell 6 1");
+		toolbar.add(lblSizeUnit, "cell 5 1");
 
 		Component rigidArea_1 = Box.createRigidArea(new Dimension(20, 20));
-		toolbar.add(rigidArea_1, "cell 7 0 1 2");
+		toolbar.add(rigidArea_1, "cell 6 0 1 2");
 
-		txtCopyright = new JTextField();
-		txtCopyright.setMinimumSize(new Dimension(250, 20));
+		txtCopyright = new DebouncedTextField(props.getCopyright(), 1000, txt -> props.setCopyright(txt));
+		txtCopyright.setMinimumSize(new Dimension(200, 20));
 		txtCopyright.setPreferredSize(new Dimension(250, 20));
 		txtCopyright.setColumns(15);
-		toolbar.add(txtCopyright, "cell 8 1,alignx left");
+		toolbar.add(txtCopyright, "cell 7 1,alignx left");
 
 		Component glue = Box.createGlue();
-		toolbar.add(glue, "cell 9 1");
+		toolbar.add(glue, "flowx,cell 8 1");
+
+		JButton btnResize = new JButton("Save and resize");
+		toolbar.add(btnResize, "cell 9 1,growx");
 
 		thumbnailScroller = new JScrollPane();
 		thumbnailScroller.setEnabled(false);
@@ -296,29 +285,20 @@ public class MainView extends JFrame implements ModelView {
 		separator.setForeground(Color.GRAY);
 		toolbar.add(separator, "cell 0 4 11 1,growx,aligny center");
 
-		currentImagePanel = new ImagePanel(area -> model.performCrop(area), zoom -> lblZoomLevel.setText(zoom + "%"));
+		Component rigidArea_2 = Box.createRigidArea(new Dimension(20, 20));
+		toolbar.add(rigidArea_2, "cell 8 0 1 2");
+
+		currentImagePanel = new ImagePanel(
+				area -> model.performCrop(area),
+				zoom -> lblZoomLevel.setText(zoom + "%"),
+				props);
 		currentImagePanel.addMouseListener(unfocus);
 		getContentPane().add(currentImagePanel, BorderLayout.CENTER);
 
 	}
 
-	private Thumbnail addThumbnail(final String filename, final int index) {
-		Thumbnail thumbnail = new Thumbnail(filename, index);
-		thumbnail.addMouseListener(new MouseAdapter() {
-			@Override
-			public void mousePressed(MouseEvent e) {
-				model.selectImage(index);
-			}
-		});
-
-		thumbnailPanel.add(thumbnail);
-
-		return thumbnail;
-	}
-
 	private Action action(ActionListener listener) {
 		return new AbstractAction() {
-
 			@Override
 			public void actionPerformed(ActionEvent e) {
 				listener.actionPerformed(e);
@@ -333,12 +313,10 @@ public class MainView extends JFrame implements ModelView {
 			Component[] components = thumbnailPanel.getComponents();
 
 			int leftWidth = 0;
-			int totalWidth = 0;
 
-			for (int i = 0; i < components.length; i++) {
+			for (int i = 0; i < index; i++) {
 				if (i < index)
 					leftWidth += components[i].getWidth() + 5;
-				totalWidth += components[i].getWidth() + 5;
 			}
 			int imgX = leftWidth + 5 + components[index].getWidth() / 2;
 
@@ -346,22 +324,13 @@ public class MainView extends JFrame implements ModelView {
 			int viewportWidth = thumbnailScroller.getViewport().getWidth();
 			int maxX = Math.max(0, panelWidth - viewportWidth);
 
-			System.out.println(
-					"panel/total with " + panelWidth + " " + totalWidth + " for " + components.length + " images");
-
 			if (index > thumbnailPanel.getComponentCount() - 4) {
-
 				int viewportX = Math.min(imgX + viewportWidth / 2, maxX);
-
 				// If viewing the last thumb nail, align right edge
 				thumbnailScroller.getViewport().setViewPosition(new Point(viewportX, 0));
-				System.out.println("scrolling RIGHT " + viewportX);
 			} else {
-
 				int viewportX = Math.max(0, imgX - viewportWidth / 2);
-
 				thumbnailScroller.getViewport().setViewPosition(new Point(viewportX, 0));
-				System.out.println("scrolling LEFT " + viewportX);
 			}
 
 			thumbnailScroller.revalidate();
@@ -369,60 +338,4 @@ public class MainView extends JFrame implements ModelView {
 		}
 	}
 
-//	private void scrollToThumbnail(JPanel panel, int selectedIndex) {
-//
-//	}
-//
-//	private static void scrollToThumbnailOLD(JPanel panel, int selectedIndex) {
-//		Component[] components = panel.getComponents();
-//
-//		int visibleWidth = panel.getParent().getWidth();
-//		int usableWidth = visibleWidth - components[selectedIndex].getWidth() + 100;
-//
-//		int leftIdx = selectedIndex - 1;
-//		int rightIdx = selectedIndex + 1;
-//		int leftWidth = 0;
-//		int rightWidth = 0;
-//		int totalWidth = 0;
-//
-//		boolean doLeft = true;
-//		boolean doRight = true;
-//
-//		// Find the first and last thumb nails to show
-//		while ((leftIdx >= 0 || rightIdx < components.length) && (doLeft || doRight)) {
-//			if (doLeft && (leftWidth <= rightWidth || !doRight)) {
-//				if (leftIdx >= 0) {
-//					int w = components[leftIdx].getWidth();
-//					if (totalWidth + w > usableWidth) {
-//						doLeft = false;
-//					} else {
-//						totalWidth += w;
-//						leftWidth += w;
-//						leftIdx--;
-//					}
-//				} else {
-//					doLeft = false;
-//				}
-//			} else if (doRight) {
-//				if (rightIdx < components.length) {
-//					int w = components[rightIdx].getWidth();
-//					if (totalWidth + w > usableWidth) {
-//						doRight = false;
-//					} else {
-//						totalWidth += w;
-//						rightWidth += w;
-//						rightIdx++;
-//					}
-//				} else {
-//					doRight = false;
-//				}
-//			}
-//		}
-//
-//		// Set which components are visible based on the total width
-//		for (int i = 0; i < components.length; i++) {
-//			components[i].setVisible(leftIdx < i && i < rightIdx);
-//		}
-//
-//	}
 }
