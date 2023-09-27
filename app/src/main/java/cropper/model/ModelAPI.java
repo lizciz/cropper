@@ -9,19 +9,15 @@ public interface ModelAPI {
 
 	void openImageDirectory(File dir);
 
-	void selectImage(int index);
+	void trashImage(String id);
 
-	void selectPreviousImage();
+	void deleteImage(String id);
 
-	void selectNextImage();
+	void undoImageChanges(String id);
 
-	void deleteSelectedImage();
+	void redoImageChanges(String id);
 
-	void undoSelectedImageChanges();
-
-	void redoSelectedImageChanges();
-
-	void performCrop(Rectangle area);
+	void performCrop(String id, Rectangle area);
 
 	void save();
 

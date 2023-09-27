@@ -11,7 +11,6 @@ import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
-import javax.swing.SwingUtilities;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
 
@@ -23,6 +22,7 @@ public class Thumbnail extends JPanel {
 
 	public static final int HEIGHT = 100;
 
+	private final String id;
 	private final JLabel lblImage;
 	private final JLabel lblFilename;
 
@@ -32,12 +32,11 @@ public class Thumbnail extends JPanel {
 	private static final Border SELECTED_BORDER = BorderFactory.createLineBorder(Color.DARK_GRAY, 3);
 	private static final Border DEFAULT_BORDER = BorderFactory.createLineBorder(Color.LIGHT_GRAY, 3);
 
-	private int index;
 	private BufferedImage originalImage;
 	private BufferedImage scaledImage;
 
-	public Thumbnail(String filename, int index) {
-		this.index = index;
+	public Thumbnail(BufferedImage image, String filename, String id) {
+		this.id = id;
 
 		setBorder(DEFAULT_BORDER);
 		setBackground(DEFAULT_BG_COLOR);
@@ -53,17 +52,17 @@ public class Thumbnail extends JPanel {
 		lblFilename.setFont(new Font("Tahoma", Font.BOLD, 11));
 		lblFilename.setHorizontalAlignment(SwingConstants.CENTER);
 		add(lblFilename, BorderLayout.SOUTH);
+
+		updateImage(image);
 	}
 
 	public void updateImage(BufferedImage newImage) {
 		originalImage = newImage;
 		scaledImage = Utils.scaleImage(originalImage, HEIGHT);
-		SwingUtilities.invokeLater(() -> {
-			lblImage.setPreferredSize(null);
-			lblImage.setIcon(new ImageIcon(scaledImage));
-			revalidate();
-			repaint();
-		});
+		lblImage.setPreferredSize(null);
+		lblImage.setIcon(new ImageIcon(scaledImage));
+		revalidate();
+		repaint();
 	}
 
 	public void select() {
@@ -76,8 +75,12 @@ public class Thumbnail extends JPanel {
 		setBackground(DEFAULT_BG_COLOR);
 	}
 
-	public int getIndex() {
-		return index;
+	public String getId() {
+		return id;
+	}
+
+	public BufferedImage getOriginalImage() {
+		return originalImage;
 	}
 
 }

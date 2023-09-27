@@ -20,8 +20,7 @@ import java.awt.event.MouseListener;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.Objects;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
@@ -65,7 +64,6 @@ public class MainView extends JFrame implements ModelView {
 	private DefaultModel model;
 	private CropperProps props;
 
-	private final ExecutorService pool = Executors.newCachedThreadPool();
 	private JTextField txtCopyright;
 
 	private Thumbnail selectedThumbnail;
@@ -104,20 +102,18 @@ public class MainView extends JFrame implements ModelView {
 	}
 
 	@Override
-	public void imageWasLoaded(final BufferedImage image, final String filename, final int index) {
+	public void imageWasLoaded(final BufferedImage image, final String filename, final String id) {
 		SwingUtilities.invokeLater(() -> {
 
-			Thumbnail thumbnail = new Thumbnail(filename, index);
+			Thumbnail thumbnail = new Thumbnail(image, filename, id);
 			thumbnail.addMouseListener(new MouseAdapter() {
 				@Override
 				public void mousePressed(MouseEvent e) {
-					model.selectImage(index);
+					selectThumbnail(id);
 				}
 			});
 			thumbnailPanel.add(thumbnail);
 			revalidate();
-
-			pool.submit(() -> thumbnail.updateImage(image));
 
 		});
 	}
@@ -138,27 +134,49 @@ public class MainView extends JFrame implements ModelView {
 	}
 
 	@Override
-	public void displayImage(final int index, final BufferedImage image) {
+	public void imageWasUpdated(String id, BufferedImage image) {
 		SwingUtilities.invokeLater(() -> {
-			Thumbnail newThumbnail = (Thumbnail) thumbnailPanel.getComponent(index);
+			Thumbnail thumbnail = findThumbnail(id);
+			if (thumbnail == null)
+				return;
 
-			if (selectedThumbnail != null) {
-				selectedThumbnail.deselect();
+			thumbnail.updateImage(image);
+			if (selectedThumbnail.getId().equals(id)) {
+				currentImagePanel.setImage(image);
 			}
-			newThumbnail.select();
-			selectedThumbnail = newThumbnail;
-			currentImagePanel.setImage(image);
-
-			scrollToCurrentThumnail();
 		});
 	}
 
 	@Override
-	public void refreshThumbnail(final int index, final BufferedImage originalImage) {
+	public void imageWasRemoved(final String id) {
 		SwingUtilities.invokeLater(() -> {
-			Thumbnail thumbnail = (Thumbnail) thumbnailPanel.getComponent(index);
-			pool.submit(() -> thumbnail.updateImage(originalImage));
+			int index = findThumbnailIndex(id);
+			if (index != -1) {
+				thumbnailPanel.remove(index);
+				_selectHelper(index);
+			}
 		});
+	}
+
+	private Thumbnail findThumbnail(String id) {
+		Component[] components = thumbnailPanel.getComponents();
+		for (Component t : components) {
+			if (Objects.equals(id, ((Thumbnail) t).getId())) {
+				return (Thumbnail) t;
+			}
+		}
+		return null;
+	}
+
+	private int findThumbnailIndex(String id) {
+		Component[] thumbnails = thumbnailPanel.getComponents();
+		for (int i = 0; i < thumbnails.length; i++) {
+			Thumbnail thumbnail = (Thumbnail) thumbnails[i];
+			if (Objects.equals(id, thumbnail.getId())) {
+				return i;
+			}
+		}
+		return -1;
 	}
 
 	private void createUIComponents() {
@@ -176,16 +194,18 @@ public class MainView extends JFrame implements ModelView {
 		InputMap inputMap = contentPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
 		inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, 0), "leftArrow");
 		inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), "rightArrow");
-		inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "delete");
+		inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "trash");
+		inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, InputEvent.SHIFT_DOWN_MASK), "delete");
 		inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK), "undo");
 		inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.CTRL_DOWN_MASK), "redo");
 
 		ActionMap actionMap = contentPane.getActionMap();
-		actionMap.put("leftArrow", action(e -> model.selectPreviousImage()));
-		actionMap.put("rightArrow", action(e -> model.selectNextImage()));
-		actionMap.put("delete", action(e -> model.deleteSelectedImage()));
-		actionMap.put("undo", action(e -> model.undoSelectedImageChanges()));
-		actionMap.put("redo", action(e -> model.redoSelectedImageChanges()));
+		actionMap.put("leftArrow", action(e -> selectPreviousImage()));
+		actionMap.put("rightArrow", action(e -> selectNextImage()));
+		actionMap.put("trash", action(e -> trashSelectedImage()));
+		actionMap.put("delete", action(e -> deleteSelectedImage()));
+		actionMap.put("undo", action(e -> undoSelectedImageChanges()));
+		actionMap.put("redo", action(e -> redoSelectedImageChanges()));
 
 		getContentPane().setLayout(new BorderLayout());
 
@@ -289,12 +309,92 @@ public class MainView extends JFrame implements ModelView {
 		toolbar.add(rigidArea_2, "cell 8 0 1 2");
 
 		currentImagePanel = new ImagePanel(
-				area -> model.performCrop(area),
+				area -> model.performCrop(selectedThumbnail.getId(), area),
 				zoom -> lblZoomLevel.setText(zoom + "%"),
 				props);
 		currentImagePanel.addMouseListener(unfocus);
 		getContentPane().add(currentImagePanel, BorderLayout.CENTER);
 
+	}
+
+	private void selectNextImage() {
+		if (selectedThumbnail == null) {
+			_selectHelper(0);
+		} else {
+			int index = findThumbnailIndex(selectedThumbnail.getId());
+			_selectHelper(index + 1);
+		}
+	}
+
+	private void selectPreviousImage() {
+		if (selectedThumbnail == null) {
+			_selectHelper(0);
+		} else {
+			int index = findThumbnailIndex(selectedThumbnail.getId());
+			_selectHelper(index - 1);
+		}
+	}
+
+	private void selectThumbnail(String id) {
+		int index = findThumbnailIndex(id);
+		_selectHelper(index);
+	}
+
+	private void _selectHelper(int index) {
+		if (thumbnailPanel.getComponentCount() == 0) {
+			return;
+		}
+		index = Math.max(0, Math.min(index, thumbnailPanel.getComponentCount() - 1));
+		Thumbnail newThumbnail = (Thumbnail) thumbnailPanel.getComponent(index);
+
+		if (selectedThumbnail != null && selectedThumbnail.getId().equals(newThumbnail.getId())) {
+			return;
+		}
+		if (selectedThumbnail != null) {
+			selectedThumbnail.deselect();
+		}
+		newThumbnail.select();
+		selectedThumbnail = newThumbnail;
+		currentImagePanel.setImage(newThumbnail.getOriginalImage());
+
+		scrollToCurrentThumnail();
+	}
+
+	private void trashSelectedImage() {
+		if (selectedThumbnail == null) {
+			return;
+		}
+		model.trashImage(selectedThumbnail.getId());
+	}
+
+	private void deleteSelectedImage() {
+		if (selectedThumbnail == null) {
+			return;
+		}
+
+		int choice = JOptionPane.showConfirmDialog(
+				MainView.this,
+				"Do you want to permanently delete the selected image?",
+				"Delte selected image",
+				JOptionPane.YES_NO_OPTION,
+				JOptionPane.WARNING_MESSAGE);
+		if (choice == JOptionPane.YES_OPTION) {
+			model.deleteImage(selectedThumbnail.getId());
+		}
+	}
+
+	private void undoSelectedImageChanges() {
+		if (selectedThumbnail == null) {
+			return;
+		}
+		model.undoImageChanges(selectedThumbnail.getId());
+	}
+
+	private void redoSelectedImageChanges() {
+		if (selectedThumbnail == null) {
+			return;
+		}
+		model.redoImageChanges(selectedThumbnail.getId());
 	}
 
 	private Action action(ActionListener listener) {
@@ -308,23 +408,26 @@ public class MainView extends JFrame implements ModelView {
 
 	private void scrollToCurrentThumnail() {
 		if (selectedThumbnail != null) {
-			int index = selectedThumbnail.getIndex();
-
-			Component[] components = thumbnailPanel.getComponents();
+			String id = selectedThumbnail.getId();
+			Component[] thumbnails = thumbnailPanel.getComponents();
 
 			int leftWidth = 0;
 
-			for (int i = 0; i < index; i++) {
-				if (i < index)
-					leftWidth += components[i].getWidth() + 5;
+			// Find all thumb nails to the left of the selected one
+			int index = 0;
+			for (; index < thumbnails.length; index++) {
+				Thumbnail t = (Thumbnail) thumbnails[index];
+				if (t.getId().equals(id))
+					break;
+				leftWidth += t.getWidth() + 5;
 			}
-			int imgX = leftWidth + 5 + components[index].getWidth() / 2;
+			int imgX = leftWidth + 5 + selectedThumbnail.getWidth() / 2;
 
 			int panelWidth = thumbnailPanel.getWidth();
 			int viewportWidth = thumbnailScroller.getViewport().getWidth();
 			int maxX = Math.max(0, panelWidth - viewportWidth);
 
-			if (index > thumbnailPanel.getComponentCount() - 4) {
+			if (index > thumbnailPanel.getComponentCount() - 3) {
 				int viewportX = Math.min(imgX + viewportWidth / 2, maxX);
 				// If viewing the last thumb nail, align right edge
 				thumbnailScroller.getViewport().setViewPosition(new Point(viewportX, 0));

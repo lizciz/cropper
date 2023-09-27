@@ -1,38 +1,30 @@
 package cropper.model;
 
+import java.awt.Desktop;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.imageio.ImageIO;
 
-import cropper.CropperProps;
-import util.Utils;
-
 public class DefaultModel implements ModelAPI {
 
 	private ModelView view;
 
-	private ArrayList<File> files;
-	private ArrayList<BufferedImage> originalImages;
-	private ArrayList<BufferedImage> images;
-	private int selectedIndex;
+	private Map<String, LoadedImage> imageMap;
 
 	private final ExecutorService pool = Executors.newSingleThreadExecutor();
 
-	private CropperProps props;
-
-	public DefaultModel(CropperProps props) {
-		this.files = new ArrayList<>();
-		this.originalImages = new ArrayList<>();
-		this.images = new ArrayList<>();
-		this.selectedIndex = -2;
-		this.props = props;
+	public DefaultModel() {
+		this.imageMap = new LinkedHashMap<>();
 	}
 
 	@Override
@@ -48,10 +40,9 @@ public class DefaultModel implements ModelAPI {
 				if (f.getName().toLowerCase().endsWith(".jpg")) {
 					try {
 						BufferedImage image = ImageIO.read(f);
-						originalImages.add(image);
-						images.add(image);
-						files.add(f);
-						view.imageWasLoaded(image, Utils.rmFileExt(f.getName()), images.size() - 1);
+						LoadedImage loadedImage = new LoadedImage(f, image);
+						imageMap.put(loadedImage.getId(), loadedImage);
+						view.imageWasLoaded(image, loadedImage.getFilename(), loadedImage.getId());
 					} catch (IOException e) {
 						failedToLoad.add(f);
 					}
@@ -65,47 +56,65 @@ public class DefaultModel implements ModelAPI {
 	}
 
 	@Override
-	public void selectImage(final int index) {
-		_selectHelper(true, index);
-	}
-
-	@Override
-	public void selectPreviousImage() {
-		_selectHelper(false, -1);
-	}
-
-	@Override
-	public void selectNextImage() {
-		_selectHelper(false, 1);
-	}
-
-	private void _selectHelper(final boolean set, final int value) {
+	public void trashImage(String id) {
 		pool.submit(() -> {
-			int index = set ? value : selectedIndex + value;
-			int bounded = Math.max(0, Math.min(index, images.size() - 1));
-			if (bounded != selectedIndex && !images.isEmpty()) {
-				this.selectedIndex = bounded;
-				view.displayImage(bounded, images.get(bounded));
+			LoadedImage loadedImage = imageMap.get(id);
+			if (loadedImage == null) {
+				return;
+			}
+			File file = loadedImage.getFile();
+			if (Desktop.getDesktop().moveToTrash(file)) {
+				imageMap.remove(id);
+				view.imageWasRemoved(id);
 			}
 		});
 	}
 
 	@Override
-	public void deleteSelectedImage() {
-	}
-
-	@Override
-	public void undoSelectedImageChanges() {
-	}
-
-	@Override
-	public void redoSelectedImageChanges() {
-	}
-
-	@Override
-	public void performCrop(final Rectangle cropRegion) {
+	public void deleteImage(String id) {
 		pool.submit(() -> {
-			BufferedImage originalImage = images.get(selectedIndex);
+			LoadedImage loadedImage = imageMap.get(id);
+			if (loadedImage == null) {
+				return;
+			}
+			File file = loadedImage.getFile();
+			try {
+				Files.deleteIfExists(file.toPath());
+				imageMap.remove(id);
+				view.imageWasRemoved(id);
+			} catch (IOException e) {
+				// TODO show error in UI
+				e.printStackTrace();
+			}
+		});
+
+	}
+
+	@Override
+	public void undoImageChanges(String id) {
+		pool.submit(() -> {
+			LoadedImage loadedImage = imageMap.get(id);
+			if (loadedImage == null) {
+				return;
+			}
+			loadedImage.undoChanges();
+			view.imageWasUpdated(id, loadedImage.getImage());
+		});
+	}
+
+	@Override
+	public void redoImageChanges(String id) {
+	}
+
+	@Override
+	public void performCrop(String id, final Rectangle cropRegion) {
+		pool.submit(() -> {
+			LoadedImage loadedImage = imageMap.get(id);
+			if (loadedImage == null) {
+				return;
+			}
+
+			BufferedImage originalImage = loadedImage.getOriginalImage();
 
 			// Ensure that the crop region is within the bounds of the original image
 			Rectangle crop = cropRegion.intersection(
@@ -115,10 +124,9 @@ public class DefaultModel implements ModelAPI {
 			BufferedImage croppedImage = originalImage.getSubimage(
 					crop.x, crop.y, crop.width, crop.height);
 
-			images.set(selectedIndex, croppedImage);
+			loadedImage.updateImage(croppedImage);
 
-			view.displayImage(selectedIndex, croppedImage);
-			view.refreshThumbnail(selectedIndex, croppedImage);
+			view.imageWasUpdated(loadedImage.getId(), croppedImage);
 		});
 
 	}

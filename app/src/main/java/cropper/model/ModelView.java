@@ -6,12 +6,12 @@ import java.util.List;
 
 public interface ModelView {
 
-	void imageWasLoaded(BufferedImage image, String filename, int index);
+	void imageWasLoaded(BufferedImage image, String filename, String id);
 
 	void imagesFailedToLoad(List<File> failed);
 
-	void displayImage(int index, BufferedImage image);
+	void imageWasUpdated(String id, BufferedImage image);
 
-	void refreshThumbnail(int index, BufferedImage image);
+	void imageWasRemoved(String id);
 
 }
