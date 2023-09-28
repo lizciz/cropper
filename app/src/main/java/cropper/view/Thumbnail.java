@@ -20,7 +20,8 @@ public class Thumbnail extends JPanel {
 
 	private static final long serialVersionUID = 1L;
 
-	public static final int HEIGHT = 100;
+	public static final int MAX_WIDTH = 200;
+	public static final int MAX_HEIGHT = 100;
 
 	private final String id;
 	private final JLabel lblImage;
@@ -42,7 +43,7 @@ public class Thumbnail extends JPanel {
 		setBackground(DEFAULT_BG_COLOR);
 		setLayout(new BorderLayout(0, 0));
 		lblImage = new JLabel();
-		lblImage.setPreferredSize(new Dimension((int) (HEIGHT * 1.5), HEIGHT));
+		lblImage.setPreferredSize(new Dimension((int) (MAX_HEIGHT * 1.5), MAX_HEIGHT));
 		lblImage.setBorder(null);
 		lblImage.setHorizontalAlignment(SwingConstants.CENTER);
 		add(lblImage, BorderLayout.CENTER);
@@ -58,7 +59,7 @@ public class Thumbnail extends JPanel {
 
 	public void updateImage(BufferedImage newImage) {
 		originalImage = newImage;
-		scaledImage = Utils.scaleImage(originalImage, HEIGHT);
+		scaledImage = Utils.resizeImage(originalImage, MAX_WIDTH, MAX_HEIGHT);
 		lblImage.setPreferredSize(null);
 		lblImage.setIcon(new ImageIcon(scaledImage));
 		revalidate();

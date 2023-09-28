@@ -16,6 +16,15 @@ public class LoadedImage {
 
 	private final String filename;
 
+	public LoadedImage(LoadedImage imageToSave) {
+		this.id = imageToSave.getId();
+		this.file = imageToSave.getFile();
+		this.originalImage = imageToSave.getImage();
+		this.image = imageToSave.getImage();
+
+		this.filename = imageToSave.getFilename();
+	}
+
 	public LoadedImage(File file, BufferedImage originalImage) {
 		this.id = Integer.toString(ID_COUNTER++);
 		this.file = file;
@@ -23,6 +32,10 @@ public class LoadedImage {
 		this.image = originalImage;
 
 		this.filename = Utils.rmFileExt(file.getName());
+	}
+
+	public boolean hasUnsavedChanges() {
+		return originalImage != image;
 	}
 
 	public void undoChanges() {

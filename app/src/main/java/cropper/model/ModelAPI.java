@@ -21,4 +21,6 @@ public interface ModelAPI {
 
 	void save();
 
+	void resize(int width, int height);
+
 }

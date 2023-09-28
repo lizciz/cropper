@@ -10,8 +10,10 @@ public interface ModelView {
 
 	void imagesFailedToLoad(List<File> failed);
 
-	void imageWasUpdated(String id, BufferedImage image);
+	void imageWasUpdated(String id, BufferedImage image, boolean hasUnsavedChanges);
 
 	void imageWasRemoved(String id);
+
+	void reportProgress(String string);
 
 }

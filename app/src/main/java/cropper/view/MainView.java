@@ -46,6 +46,7 @@ import javax.swing.UnsupportedLookAndFeelException;
 
 import cropper.CropperProps;
 import cropper.model.DefaultModel;
+import cropper.model.ModelAPI;
 import cropper.model.ModelView;
 import javafx.application.Platform;
 import javafx.stage.DirectoryChooser;
@@ -61,7 +62,7 @@ public class MainView extends JFrame implements ModelView {
 
 	private JPanel thumbnailPanel;
 
-	private DefaultModel model;
+	private ModelAPI model;
 	private CropperProps props;
 
 	private JTextField txtCopyright;
@@ -72,10 +73,12 @@ public class MainView extends JFrame implements ModelView {
 	private final MouseListener unfocus = new MouseAdapter() {
 		@Override
 		public void mouseClicked(MouseEvent e) {
-			getContentPane().requestFocus();
+			contentPane.requestFocus();
 		}
 	};
 	private JScrollPane thumbnailScroller;
+	private JPanel contentPane;
+	private ProgressOverlay overlay;
 
 	public MainView(DefaultModel model, CropperProps props)
 			throws ClassNotFoundException, InstantiationException, IllegalAccessException,
@@ -134,7 +137,7 @@ public class MainView extends JFrame implements ModelView {
 	}
 
 	@Override
-	public void imageWasUpdated(String id, BufferedImage image) {
+	public void imageWasUpdated(String id, BufferedImage image, boolean hasUnsavedChanges) {
 		SwingUtilities.invokeLater(() -> {
 			Thumbnail thumbnail = findThumbnail(id);
 			if (thumbnail == null)
@@ -144,6 +147,7 @@ public class MainView extends JFrame implements ModelView {
 			if (selectedThumbnail.getId().equals(id)) {
 				currentImagePanel.setImage(image);
 			}
+			SwingUtilities.invokeLater(this::scrollToCurrentThumnail);
 		});
 	}
 
@@ -156,6 +160,11 @@ public class MainView extends JFrame implements ModelView {
 				_selectHelper(index);
 			}
 		});
+	}
+
+	@Override
+	public void reportProgress(String string) {
+		// todo
 	}
 
 	private Thumbnail findThumbnail(String id) {
@@ -188,7 +197,8 @@ public class MainView extends JFrame implements ModelView {
 			}
 		});
 
-		JComponent contentPane = (JComponent) getContentPane();
+		contentPane = new JPanel(new BorderLayout(0, 0));
+		setContentPane(contentPane);
 		contentPane.addMouseListener(unfocus);
 
 		InputMap inputMap = contentPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
@@ -207,10 +217,10 @@ public class MainView extends JFrame implements ModelView {
 		actionMap.put("undo", action(e -> undoSelectedImageChanges()));
 		actionMap.put("redo", action(e -> redoSelectedImageChanges()));
 
-		getContentPane().setLayout(new BorderLayout());
+		contentPane.setLayout(new BorderLayout());
 
 		JPanel toolbar = new JPanel();
-		getContentPane().add(toolbar, BorderLayout.NORTH);
+		contentPane.add(toolbar, BorderLayout.NORTH);
 		toolbar.setLayout(new MigLayout("", "[][][][][][][][][][][grow]", "[][][grow][][]"));
 
 		JButton btnSelectImageDir = new JButton("Select image directory");
@@ -238,12 +248,13 @@ public class MainView extends JFrame implements ModelView {
 		toolbar.add(lblCopyright, "cell 7 0");
 
 		JButton btnSave = new JButton("Save all");
+		btnSave.addActionListener(e -> model.save());
 		toolbar.add(btnSave, "cell 9 0,growx");
 
 		JCheckBox checkLimitZoom = new JCheckBox("Limit zoom to 100%", props.isMaxZoom100());
 		checkLimitZoom.addItemListener(e -> {
 			props.setMaxZoom100(e.getStateChange() == ItemEvent.SELECTED);
-			getContentPane().requestFocus();
+			contentPane.requestFocus();
 			currentImagePanel.repaint();
 		});
 		toolbar.add(checkLimitZoom, "cell 0 1");
@@ -279,6 +290,18 @@ public class MainView extends JFrame implements ModelView {
 		toolbar.add(glue, "flowx,cell 8 1");
 
 		JButton btnResize = new JButton("Save and resize");
+		btnResize.addActionListener(e -> {
+			model.save();
+			try {
+				int width = Integer.parseInt(txtPreferredWidth.getText());
+				int height = Integer.parseInt(txtPreferredHeight.getText());
+				model.resize(width, height);
+			} catch (NumberFormatException ex) {
+				JOptionPane.showMessageDialog(MainView.this,
+						"You must specify a valid (numeric) maximum width and height.", "Invalid size",
+						JOptionPane.INFORMATION_MESSAGE);
+			}
+		});
 		toolbar.add(btnResize, "cell 9 1,growx");
 
 		thumbnailScroller = new JScrollPane();
@@ -313,7 +336,10 @@ public class MainView extends JFrame implements ModelView {
 				zoom -> lblZoomLevel.setText(zoom + "%"),
 				props);
 		currentImagePanel.addMouseListener(unfocus);
-		getContentPane().add(currentImagePanel, BorderLayout.CENTER);
+		contentPane.add(currentImagePanel, BorderLayout.CENTER);
+
+		overlay = new ProgressOverlay();
+		setGlassPane(overlay);
 
 	}
 
@@ -404,6 +430,14 @@ public class MainView extends JFrame implements ModelView {
 				listener.actionPerformed(e);
 			}
 		};
+	}
+
+	private void showOverlay(String message, String extraInfo) {
+		overlay.showOverlay(message, extraInfo);
+	}
+
+	private void hideOverlay() {
+		overlay.hideOverlay();
 	}
 
 	private void scrollToCurrentThumnail() {

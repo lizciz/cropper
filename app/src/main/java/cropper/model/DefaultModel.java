@@ -5,7 +5,11 @@ import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,6 +18,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.imageio.ImageIO;
+
+import util.Utils;
 
 public class DefaultModel implements ModelAPI {
 
@@ -35,17 +41,24 @@ public class DefaultModel implements ModelAPI {
 	@Override
 	public void openImageDirectory(File dir) {
 		pool.submit(() -> {
+			List<Path> imageFiles;
+			try {
+				imageFiles = findImageFiles(dir.toPath());
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+				return;
+			}
 			List<File> failedToLoad = new ArrayList<>();
-			for (File f : dir.listFiles()) {
-				if (f.getName().toLowerCase().endsWith(".jpg")) {
-					try {
-						BufferedImage image = ImageIO.read(f);
-						LoadedImage loadedImage = new LoadedImage(f, image);
-						imageMap.put(loadedImage.getId(), loadedImage);
-						view.imageWasLoaded(image, loadedImage.getFilename(), loadedImage.getId());
-					} catch (IOException e) {
-						failedToLoad.add(f);
-					}
+			for (Path path : imageFiles) {
+				try {
+					File f = path.toFile();
+					BufferedImage image = ImageIO.read(f);
+					LoadedImage loadedImage = new LoadedImage(f, image);
+					imageMap.put(loadedImage.getId(), loadedImage);
+					view.imageWasLoaded(image, loadedImage.getFilename(), loadedImage.getId());
+				} catch (IOException e) {
+					failedToLoad.add(path.toFile());
 				}
 			}
 
@@ -98,7 +111,7 @@ public class DefaultModel implements ModelAPI {
 				return;
 			}
 			loadedImage.undoChanges();
-			view.imageWasUpdated(id, loadedImage.getImage());
+			view.imageWasUpdated(id, loadedImage.getImage(), loadedImage.hasUnsavedChanges());
 		});
 	}
 
@@ -114,27 +127,106 @@ public class DefaultModel implements ModelAPI {
 				return;
 			}
 
-			BufferedImage originalImage = loadedImage.getOriginalImage();
+			BufferedImage image = loadedImage.getImage();
 
 			// Ensure that the crop region is within the bounds of the original image
 			Rectangle crop = cropRegion.intersection(
-					new Rectangle(0, 0, originalImage.getWidth(), originalImage.getHeight()));
+					new Rectangle(0, 0, image.getWidth(), image.getHeight()));
 
 			// Perform the actual cropping
-			BufferedImage croppedImage = originalImage.getSubimage(
+			BufferedImage croppedImage = image.getSubimage(
 					crop.x, crop.y, crop.width, crop.height);
 
 			loadedImage.updateImage(croppedImage);
 
-			view.imageWasUpdated(loadedImage.getId(), croppedImage);
+			view.imageWasUpdated(loadedImage.getId(), croppedImage, loadedImage.hasUnsavedChanges());
 		});
 
 	}
 
 	@Override
 	public void save() {
-		// TODO Auto-generated method stub
+		pool.submit(() -> {
+			for (LoadedImage loadedImage : imageMap.values()) {
+				if (loadedImage.hasUnsavedChanges()) {
+					String id = loadedImage.getId();
+					File file = loadedImage.getFile();
+					BufferedImage image = loadedImage.getImage();
+					try {
+						ImageIO.write(image, "jpg", file);
+						LoadedImage newImage = new LoadedImage(loadedImage);
+						imageMap.put(id, newImage);
+						view.imageWasUpdated(id, image, newImage.hasUnsavedChanges());
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			}
+		});
+	}
 
+	@Override
+	public void resize(int width, int height) {
+		pool.submit(() -> {
+			int totalCount = imageMap.size();
+			int currentCount = 1;
+			view.reportProgress("Resizing images...");
+			for (LoadedImage loadedImage : imageMap.values()) {
+				view.reportProgress(String.format("Resizing images... %d/%d", currentCount++, totalCount));
+				File imageFile = loadedImage.getFile();
+				BufferedImage image = loadedImage.getImage();
+
+				// Get the parent directory of the image file
+				File parentDirectory = imageFile.getParentFile();
+
+				// Create the 'resized' directory
+				File resizedDirectory = new File(parentDirectory, "resized");
+				resizedDirectory.mkdirs(); // Make sure the directory is created
+
+				BufferedImage scaledImage = Utils.resizeImage(image, width, height);
+
+				// Get the file name
+				String fileName = imageFile.getName();
+				File resizedImage = new File(resizedDirectory, fileName);
+
+				System.out.println("processing " + fileName + ", was resized? " + (image != scaledImage));
+
+				try {
+					ImageIO.write(scaledImage, "jpg", resizedImage);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+
+			}
+		});
+
+	}
+
+	private static List<Path> findImageFiles(Path directory) throws IOException {
+		List<Path> imageFiles = new ArrayList<>();
+
+		Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
+			@Override
+			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+				if (Files.isRegularFile(file) && isImageFile(file) && !isInResizedDirectory(file)) {
+					imageFiles.add(file);
+				}
+				return FileVisitResult.CONTINUE;
+			}
+		});
+
+		return imageFiles;
+	}
+
+	private static boolean isImageFile(Path file) {
+		String fileName = file.getFileName().toString().toLowerCase();
+		return fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") || fileName.endsWith(".png")
+				|| fileName.endsWith(".gif");
+	}
+
+	private static boolean isInResizedDirectory(Path file) {
+		return file.getParent() != null && file.getParent().endsWith("resized");
 	}
 
 }
