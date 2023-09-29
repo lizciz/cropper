@@ -56,7 +56,7 @@ public class DefaultModel implements ModelAPI {
 					BufferedImage image = ImageIO.read(f);
 					LoadedImage loadedImage = new LoadedImage(f, image);
 					imageMap.put(loadedImage.getId(), loadedImage);
-					view.imageWasLoaded(image, loadedImage.getFilename(), loadedImage.getId());
+					view.imageWasLoaded(loadedImage.getId(), loadedImage.getFilename(), image);
 				} catch (IOException e) {
 					failedToLoad.add(path.toFile());
 				}
@@ -147,6 +147,7 @@ public class DefaultModel implements ModelAPI {
 	@Override
 	public void save() {
 		pool.submit(() -> {
+			view.showOverlay("Saving", "");
 			for (LoadedImage loadedImage : imageMap.values()) {
 				if (loadedImage.hasUnsavedChanges()) {
 					String id = loadedImage.getId();
@@ -163,6 +164,7 @@ public class DefaultModel implements ModelAPI {
 					}
 				}
 			}
+			view.hideOverlay();
 		});
 	}
 
@@ -171,9 +173,9 @@ public class DefaultModel implements ModelAPI {
 		pool.submit(() -> {
 			int totalCount = imageMap.size();
 			int currentCount = 1;
-			view.reportProgress("Resizing images...");
 			for (LoadedImage loadedImage : imageMap.values()) {
-				view.reportProgress(String.format("Resizing images... %d/%d", currentCount++, totalCount));
+				view.showOverlay("Resizing images", currentCount + "/" + totalCount);
+				currentCount++;
 				File imageFile = loadedImage.getFile();
 				BufferedImage image = loadedImage.getImage();
 
@@ -190,8 +192,6 @@ public class DefaultModel implements ModelAPI {
 				String fileName = imageFile.getName();
 				File resizedImage = new File(resizedDirectory, fileName);
 
-				System.out.println("processing " + fileName + ", was resized? " + (image != scaledImage));
-
 				try {
 					ImageIO.write(scaledImage, "jpg", resizedImage);
 				} catch (IOException e) {
@@ -199,8 +199,23 @@ public class DefaultModel implements ModelAPI {
 				}
 
 			}
+			view.hideOverlay();
 		});
 
+	}
+
+	@Override
+	public int[] getSizeInfo(String id) {
+		LoadedImage loadedImage = imageMap.get(id);
+		BufferedImage image = loadedImage.getImage();
+		int fileSize = (int) (loadedImage.getFile().length() >> 10);
+		if (loadedImage.hasUnsavedChanges()) {
+			BufferedImage originalImage = loadedImage.getOriginalImage();
+			int estimate = fileSize * image.getWidth() * image.getHeight()
+					/ (originalImage.getWidth() * originalImage.getHeight());
+			return new int[] { image.getWidth(), image.getHeight(), estimate };
+		}
+		return new int[] { image.getWidth(), image.getHeight(), fileSize };
 	}
 
 	private static List<Path> findImageFiles(Path directory) throws IOException {

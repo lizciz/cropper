@@ -26,6 +26,7 @@ public class Thumbnail extends JPanel {
 	private final String id;
 	private final JLabel lblImage;
 	private final JLabel lblFilename;
+	private final String filename;
 
 	private static final Color DEFAULT_BG_COLOR = new Color(200, 200, 200);
 	private static final Color SELECTED_BG_COLOR = new Color(150, 150, 150);
@@ -36,8 +37,9 @@ public class Thumbnail extends JPanel {
 	private BufferedImage originalImage;
 	private BufferedImage scaledImage;
 
-	public Thumbnail(BufferedImage image, String filename, String id) {
+	public Thumbnail(String id, String filename, BufferedImage image) {
 		this.id = id;
+		this.filename = filename;
 
 		setBorder(DEFAULT_BORDER);
 		setBackground(DEFAULT_BG_COLOR);
@@ -78,6 +80,10 @@ public class Thumbnail extends JPanel {
 
 	public String getId() {
 		return id;
+	}
+
+	public String getFilename() {
+		return filename;
 	}
 
 	public BufferedImage getOriginalImage() {

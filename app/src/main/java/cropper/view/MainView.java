@@ -45,7 +45,6 @@ import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 
 import cropper.CropperProps;
-import cropper.model.DefaultModel;
 import cropper.model.ModelAPI;
 import cropper.model.ModelView;
 import javafx.application.Platform;
@@ -79,8 +78,9 @@ public class MainView extends JFrame implements ModelView {
 	private JScrollPane thumbnailScroller;
 	private JPanel contentPane;
 	private ProgressOverlay overlay;
+	private JLabel lblImageIndex;
 
-	public MainView(DefaultModel model, CropperProps props)
+	public MainView(ModelAPI model, CropperProps props)
 			throws ClassNotFoundException, InstantiationException, IllegalAccessException,
 			UnsupportedLookAndFeelException {
 
@@ -105,10 +105,10 @@ public class MainView extends JFrame implements ModelView {
 	}
 
 	@Override
-	public void imageWasLoaded(final BufferedImage image, final String filename, final String id) {
+	public void imageWasLoaded(final String id, final String filename, final BufferedImage image) {
 		SwingUtilities.invokeLater(() -> {
 
-			Thumbnail thumbnail = new Thumbnail(image, filename, id);
+			Thumbnail thumbnail = new Thumbnail(id, filename, image);
 			thumbnail.addMouseListener(new MouseAdapter() {
 				@Override
 				public void mousePressed(MouseEvent e) {
@@ -116,6 +116,7 @@ public class MainView extends JFrame implements ModelView {
 				}
 			});
 			thumbnailPanel.add(thumbnail);
+			lblImageIndex.setText(String.format("-/%d", thumbnailPanel.getComponentCount()));
 			revalidate();
 
 		});
@@ -147,6 +148,7 @@ public class MainView extends JFrame implements ModelView {
 			if (selectedThumbnail.getId().equals(id)) {
 				currentImagePanel.setImage(image);
 			}
+			SwingUtilities.invokeLater(this::updateTitle);
 			SwingUtilities.invokeLater(this::scrollToCurrentThumnail);
 		});
 	}
@@ -160,11 +162,6 @@ public class MainView extends JFrame implements ModelView {
 				_selectHelper(index);
 			}
 		});
-	}
-
-	@Override
-	public void reportProgress(String string) {
-		// todo
 	}
 
 	private Thumbnail findThumbnail(String id) {
@@ -304,6 +301,9 @@ public class MainView extends JFrame implements ModelView {
 		});
 		toolbar.add(btnResize, "cell 9 1,growx");
 
+		Component glue_1 = Box.createGlue();
+		toolbar.add(glue_1, "cell 10 0 1 2");
+
 		thumbnailScroller = new JScrollPane();
 		thumbnailScroller.setEnabled(false);
 		thumbnailScroller.setWheelScrollingEnabled(false);
@@ -311,7 +311,7 @@ public class MainView extends JFrame implements ModelView {
 		thumbnailScroller.setBorder(null); // BorderFactory.createLineBorder(Color.RED, 2));
 		thumbnailScroller.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
 		thumbnailScroller.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-		toolbar.add(thumbnailScroller, "cell 0 2 11 1,grow");
+		toolbar.add(thumbnailScroller, "cell 0 2 10 1,grow");
 
 		thumbnailPanel = new JPanel();
 		FlowLayout flowLayout = (FlowLayout) thumbnailPanel.getLayout();
@@ -319,10 +319,21 @@ public class MainView extends JFrame implements ModelView {
 		thumbnailScroller.setViewportView(thumbnailPanel);
 		thumbnailPanel.setBorder(null); // BorderFactory.createLineBorder(Color.GREEN, 2));
 
+		JPanel panel = new JPanel();
+		toolbar.add(panel, "cell 0 3 11 1,grow");
+		panel.setLayout(new MigLayout("", "[100px][grow][100px]", "[]"));
+
+		lblImageIndex = new JLabel("-/-");
+		lblImageIndex.setFont(new Font("Tahoma", Font.PLAIN, 14));
+		panel.add(lblImageIndex, "cell 0 0,alignx center");
+
 		JLabel lblZoomLevel = new JLabel("-");
+		panel.add(lblZoomLevel, "cell 1 0,alignx center");
 		lblZoomLevel.setHorizontalAlignment(SwingConstants.CENTER);
 		lblZoomLevel.setFont(new Font("Tahoma", Font.BOLD, 14));
-		toolbar.add(lblZoomLevel, "cell 0 3 11 1,growx");
+
+		Component glue_2 = Box.createGlue();
+		panel.add(glue_2, "cell 2 0");
 
 		JSeparator separator = new JSeparator();
 		separator.setForeground(Color.GRAY);
@@ -341,9 +352,19 @@ public class MainView extends JFrame implements ModelView {
 		overlay = new ProgressOverlay();
 		setGlassPane(overlay);
 
+//		new Thread(() -> {
+//			try {
+//				Thread.sleep(5000);
+//			} catch (InterruptedException e1) {
+//			}
+//			showOverlay("Resizing empty space", "Unknown how...");
+//		}).start();
+
 	}
 
 	private void selectNextImage() {
+		if (overlay.isOverlayShowing())
+			return;
 		if (selectedThumbnail == null) {
 			_selectHelper(0);
 		} else {
@@ -353,6 +374,8 @@ public class MainView extends JFrame implements ModelView {
 	}
 
 	private void selectPreviousImage() {
+		if (overlay.isOverlayShowing())
+			return;
 		if (selectedThumbnail == null) {
 			_selectHelper(0);
 		} else {
@@ -368,6 +391,7 @@ public class MainView extends JFrame implements ModelView {
 
 	private void _selectHelper(int index) {
 		if (thumbnailPanel.getComponentCount() == 0) {
+			lblImageIndex.setText("-/-");
 			return;
 		}
 		index = Math.max(0, Math.min(index, thumbnailPanel.getComponentCount() - 1));
@@ -383,10 +407,24 @@ public class MainView extends JFrame implements ModelView {
 		selectedThumbnail = newThumbnail;
 		currentImagePanel.setImage(newThumbnail.getOriginalImage());
 
+		lblImageIndex.setText(String.format("%d/%d", index + 1, thumbnailPanel.getComponentCount()));
+		updateTitle();
 		scrollToCurrentThumnail();
 	}
 
+	private void updateTitle() {
+		if (selectedThumbnail != null) {
+			String filename = selectedThumbnail.getFilename();
+			int[] info = model.getSizeInfo(selectedThumbnail.getId());
+			setTitle(String.format("Cropper - %s [%d x %d px, %d kb]", filename, info[0], info[1], info[2]));
+		} else {
+			setTitle("Cropper");
+		}
+	}
+
 	private void trashSelectedImage() {
+		if (overlay.isOverlayShowing())
+			return;
 		if (selectedThumbnail == null) {
 			return;
 		}
@@ -394,6 +432,8 @@ public class MainView extends JFrame implements ModelView {
 	}
 
 	private void deleteSelectedImage() {
+		if (overlay.isOverlayShowing())
+			return;
 		if (selectedThumbnail == null) {
 			return;
 		}
@@ -410,6 +450,8 @@ public class MainView extends JFrame implements ModelView {
 	}
 
 	private void undoSelectedImageChanges() {
+		if (overlay.isOverlayShowing())
+			return;
 		if (selectedThumbnail == null) {
 			return;
 		}
@@ -417,6 +459,8 @@ public class MainView extends JFrame implements ModelView {
 	}
 
 	private void redoSelectedImageChanges() {
+		if (overlay.isOverlayShowing())
+			return;
 		if (selectedThumbnail == null) {
 			return;
 		}
@@ -432,11 +476,13 @@ public class MainView extends JFrame implements ModelView {
 		};
 	}
 
-	private void showOverlay(String message, String extraInfo) {
+	@Override
+	public void showOverlay(String message, String extraInfo) {
 		overlay.showOverlay(message, extraInfo);
 	}
 
-	private void hideOverlay() {
+	@Override
+	public void hideOverlay() {
 		overlay.hideOverlay();
 	}
 

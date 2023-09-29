@@ -23,4 +23,6 @@ public interface ModelAPI {
 
 	void resize(int width, int height);
 
+	int[] getSizeInfo(String id);
+
 }

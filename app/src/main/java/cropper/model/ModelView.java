@@ -6,7 +6,7 @@ import java.util.List;
 
 public interface ModelView {
 
-	void imageWasLoaded(BufferedImage image, String filename, String id);
+	void imageWasLoaded(String id, String filename, BufferedImage image);
 
 	void imagesFailedToLoad(List<File> failed);
 
@@ -14,6 +14,8 @@ public interface ModelView {
 
 	void imageWasRemoved(String id);
 
-	void reportProgress(String string);
+	void hideOverlay();
+
+	void showOverlay(String message, String extraInfo);
 
 }
