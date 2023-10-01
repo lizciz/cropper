@@ -1,0 +1,26 @@
+# Cropper language file
+# English (en)
+# lang=English
+
+OVERLAY_SAVING=Saving
+OVERLAY_SAVING_EXTRA=
+OVERLAY_RESIZING=Resizing images
+OVERLAY_RESIZING_EXTRA=%d/%d
+
+LOAD_FAILED_TITLE=Error when loading
+LOAD_FAILED_MESSAGE=Failed to load %d files:
+
+SELECT_IMG_DIR_BUTTON_TEXT=Select image directory
+LIMIT_ZOOM_LABEL=Limit zoom to 100%
+
+PREFERRED_SIZE_TEXT=Preferred size (w/h):
+INVALID_SIZE_MESSAGE=You must specify a valid (numeric) maximum width and height.
+INVALID_SIZE_TITLE=Invalid size
+
+COPYRIGHT_LABEL=Copyright text:
+
+SAVE_ALL_BUTTON_TEXT=Save all
+SAVE_RESIZE_BUTTON_TEXT=Save and resize
+
+CONFIRM_DELETE_MESSAGE=Do you want to permanently delete the selected image?
+CONFIRM_DELETE_TITLW=Delete selected image

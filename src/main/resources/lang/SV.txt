@@ -1,0 +1,26 @@
+# Cropper language file
+# Swedish (sv)
+# lang=Svenska
+
+OVERLAY_SAVING=Sparar
+OVERLAY_SAVING_EXTRA=
+OVERLAY_RESIZING=Förminskar bilder
+OVERLAY_RESIZING_EXTRA=%d/%d
+
+LOAD_FAILED_TITLE=Fel uppstod vid filladdning
+LOAD_FAILED_MESSAGE=Kunde inte ladda %d filer:
+
+SELECT_IMG_DIR_BUTTON_TEXT=Välj bildkatalog
+LIMIT_ZOOM_LABEL=Begränsa zoom till 100%
+
+PREFERRED_SIZE_TEXT=Maximal storlek (b/h):
+INVALID_SIZE_MESSAGE=Du måste ange giltiga (numeriska) värden för maximal bredd och höjd.
+INVALID_SIZE_TITLE=Ogiltig storlek
+
+COPYRIGHT_LABEL=Copyright text:
+
+SAVE_ALL_BUTTON_TEXT=Spara alla
+SAVE_RESIZE_BUTTON_TEXT=Spara och förminska
+
+CONFIRM_DELETE_MESSAGE=Vill du ta bort den markerade bilden permanent?
+CONFIRM_DELETE_TITLW=Ta bort markerad bild
