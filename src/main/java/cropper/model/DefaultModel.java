@@ -24,7 +24,6 @@ import java.util.concurrent.Executors;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
-import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 
 import org.apache.commons.imaging.ImageReadException;
@@ -78,7 +77,9 @@ public class DefaultModel implements ModelAPI {
 			for (Path path : imageFiles) {
 				try {
 					File f = path.toFile();
-					BufferedImage image = Imaging.getBufferedImage(f);
+					reader.setInput(ImageIO.createImageInputStream(f));
+					// BufferedImage image = Imaging.getBufferedImage(f);
+					BufferedImage image = reader.read(0);
 					if (image == null) {
 						failedToLoad.add(path.toFile());
 						continue;
@@ -181,33 +182,27 @@ public class DefaultModel implements ModelAPI {
 			view.showOverlay(lang.get(Lang.OVERLAY_SAVING), lang.get(Lang.OVERLAY_SAVING_EXTRA));
 			ImageWriter writer = ImageIO.getImageWritersByFormatName("jpg").next();
 
-			// You may want also to alter jpeg quality
-			ImageWriteParam iwParam = writer.getDefaultWriteParam();
-			iwParam.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-			iwParam.setCompressionQuality(.95f);
-
 			ByteArrayOutputStream baos = new ByteArrayOutputStream();
 			for (LoadedImage loadedImage : imageMap.values()) {
-				if (loadedImage.hasUnsavedChanges()) {
-					String id = loadedImage.getId();
-					File file = loadedImage.getFile();
-					BufferedImage image = loadedImage.getImage();
+				// if (loadedImage.hasUnsavedChanges()) {
+				String id = loadedImage.getId();
+				File file = loadedImage.getFile();
+				BufferedImage image = loadedImage.getImage();
 
-					try {
+				try {
+					baos.reset();
+					writer.setOutput(ImageIO.createImageOutputStream(baos));
+					writer.write(null, new IIOImage(image, null, null), null);
+					setCopyrightAndWriteImage(file, new ByteArrayInputStream(baos.toByteArray()), file, copyrightText);
 
-						baos.reset();
-						writer.setOutput(ImageIO.createImageOutputStream(baos));
-						writer.write(null, new IIOImage(image, null, null), iwParam);
-						setCopyrightAndWriteImage(file, new ByteArrayInputStream(baos.toByteArray()), file, copyrightText);
-
-						LoadedImage newImage = new LoadedImage(loadedImage);
-						imageMap.put(id, newImage);
-						view.imageWasUpdated(id, image, newImage.hasUnsavedChanges());
-					} catch (Throwable e) {
-						e.printStackTrace();
-					}
+					LoadedImage newImage = new LoadedImage(loadedImage);
+					imageMap.put(id, newImage);
+					view.imageWasUpdated(id, image, newImage.hasUnsavedChanges());
+				} catch (Throwable e) {
+					e.printStackTrace();
 				}
 			}
+			// }
 			writer.dispose();
 			view.hideOverlay();
 		});
@@ -338,11 +333,6 @@ public class DefaultModel implements ModelAPI {
 			int currentCount = 1;
 			ImageWriter writer = ImageIO.getImageWritersByFormatName("jpg").next();
 
-			// You may want also to alter jpeg quality
-			ImageWriteParam iwParam = writer.getDefaultWriteParam();
-			iwParam.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-			iwParam.setCompressionQuality(.95f);
-
 			ByteArrayOutputStream baos = new ByteArrayOutputStream();
 			for (LoadedImage loadedImage : imageMap.values()) {
 				view.showOverlay(lang.get(Lang.OVERLAY_RESIZING),
@@ -356,30 +346,28 @@ public class DefaultModel implements ModelAPI {
 				resizedDirectory.mkdirs();
 				String fileName = imageFile.getName();
 				File resizedImage = new File(resizedDirectory, fileName);
-				File resizedImage2 = new File(resizedDirectory, fileName + "2.jpg");
 
 				BufferedImage scaledImage = Utils.resizeImage(image, width, height);
 
-				// try (OutputStream os = Files.newOutputStream(resizedImage.toPath())) {
-				// baos.reset();
-				// writer.setOutput(ImageIO.createImageOutputStream(baos));
-				// writer.write(null, new IIOImage(scaledImage, null, null), iwParam);
-				// setCopyrightAndWriteImage(imageFile, new
-				// ByteArrayInputStream(baos.toByteArray()), resizedImage,
-				// copyrightText);
-
-				// } catch (Throwable t) {
-				// t.printStackTrace();
-				// }
-
-				try {
-					ImageIO.write(scaledImage, "jpg", resizedImage);
-					InputStream is = Files.newInputStream(resizedImage.toPath());
-					setCopyrightAndWriteImage(imageFile, is, resizedImage2, copyrightText);
-				} catch (Throwable e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
+				try (OutputStream os = Files.newOutputStream(resizedImage.toPath())) {
+					baos.reset();
+					writer.setOutput(ImageIO.createImageOutputStream(baos));
+					writer.write(null, new IIOImage(scaledImage, null, null), null);
+					setCopyrightAndWriteImage(imageFile, new ByteArrayInputStream(baos.toByteArray()), resizedImage,
+							copyrightText);
+					writer.reset();
+				} catch (Throwable t) {
+					t.printStackTrace();
 				}
+
+				// try {
+				// ImageIO.write(scaledImage, "jpg", resizedImage);
+				// InputStream is = Files.newInputStream(resizedImage.toPath());
+				// setCopyrightAndWriteImage(imageFile, is, resizedImage2, copyrightText);
+				// } catch (Throwable e) {
+				// // TODO Auto-generated catch block
+				// e.printStackTrace();
+				// }
 
 			}
 			view.hideOverlay();

@@ -149,7 +149,7 @@ public class MainView extends JFrame implements ModelView {
 				return;
 
 			thumbnail.updateImage(image);
-			if (selectedThumbnail.getId().equals(id)) {
+			if (selectedThumbnail != null && selectedThumbnail.getId().equals(id)) {
 				currentImagePanel.setImage(image);
 			}
 			SwingUtilities.invokeLater(this::updateTitle);

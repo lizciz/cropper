@@ -5,7 +5,6 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -65,12 +64,12 @@ public class Lang {
 		try {
 			String pathValue = String.format("/lang/%s.txt", lang);
 			Path path = Paths.get(getClass().getResource(pathValue).toURI());
-			
+
 			if (!Files.exists(path)) {
 				return null;
 			}
 			List<String> lines = Files.readAllLines(path);
-			
+
 			Map<String, String> langMap = new HashMap<>();
 			for (String line : lines) {
 				if (line.isBlank() || line.startsWith("#")) {
